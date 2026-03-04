@@ -17,11 +17,14 @@ ExecStartPre=/bin/bash -c 'PORT=${LOCAL_PORT}; if command -v ss &> /dev/null; th
 # -D: 动态应用级端口转发（SOCKS5 代理）
 # -N: 不执行远程命令
 # -T: 禁用伪终端
-# -C: 启用压缩（可选，提升速度可去掉）
-ExecStart=/usr/bin/autossh -M 0 -N -T -C \
+# 注意：已移除 -C 压缩选项，减少 CPU 负担和连接不稳定
+ExecStart=/usr/bin/autossh -M 0 -N -T \
     -i ${SSH_KEY} \
-    -o ServerAliveInterval=60 \
-    -o ServerAliveCountMax=3 \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=10 \
+    -o TCPKeepAlive=yes \
+    -o ConnectTimeout=30 \
+    -o ConnectionAttempts=5 \
     -D ${LOCAL_PORT} \
     ${USER}@${HOST} -p ${PORT}
 

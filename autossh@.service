@@ -14,10 +14,20 @@ EnvironmentFile=%h/.autossh/%i.env
 ExecStartPre=/bin/bash -c 'PORT=${LOCAL_PORT}; if command -v ss &> /dev/null; then if ss -tlnp 2>/dev/null | grep -q ":$PORT "; then PID=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -oP "pid=\\K[0-9]+" | head -1); if [ -n "$PID" ]; then PROCESS=$(ps -p $PID -o comm --no-headers 2>/dev/null || echo "unknown"); if [[ "$PROCESS" == *"autossh"* ]] || [[ "$PROCESS" == *"ssh"* ]]; then kill -15 $PID 2>/dev/null || true; sleep 2; kill -9 $PID 2>/dev/null || true; fi; fi; fi; fi; exit 0'
 
 # 启动命令
-ExecStart=/usr/bin/autossh -M 0 -N -T -C \
+# 优化了超时配置以提高稳定性：
+# - ServerAliveInterval=30: 每 30 秒发送保活消息
+# - ServerAliveCountMax=10: 允许 10 次无响应（总超时 5 分钟）
+# - TCPKeepAlive=yes: 启用 TCP 层保活
+# - ConnectTimeout=30: 连接超时 30 秒
+# - ConnectionAttempts=5: 最多尝试连接 5 次
+# 注意：已移除 -C 压缩选项，减少 CPU 负担和连接不稳定
+ExecStart=/usr/bin/autossh -M 0 -N -T \
     -i ${SSH_KEY} \
-    -o ServerAliveInterval=60 \
-    -o ServerAliveCountMax=3 \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=10 \
+    -o TCPKeepAlive=yes \
+    -o ConnectTimeout=30 \
+    -o ConnectionAttempts=5 \
     -L ${LOCAL_PORT}:localhost:${REMOTE_PORT} \
     ${USER}@${HOST} -p ${PORT}
 
