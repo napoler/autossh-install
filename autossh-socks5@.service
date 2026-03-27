@@ -23,7 +23,7 @@ ExecStart=/usr/bin/autossh -M 0 -N -T \
     -o TCPKeepAlive=yes \
     -o ConnectTimeout=30 \
     -o ConnectionAttempts=10 \
-    -D ${LOCAL_PORT} \
+    -D 0.0.0.0:${LOCAL_PORT} \
     ${USER}@${HOST} -p ${PORT}
 
 # 重启策略
