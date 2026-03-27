@@ -204,16 +204,18 @@ echo ""
 # ============================================
 print_info "Step 6: 配置 systemd 用户服务"
 
+# systemd 服务模板目标路径（统一使用 autossh@.service 作为实例化模板）
 SERVICE_DEST="$SYSTEMD_USER_DIR/autossh@.service"
 
 if [ "$TUNNEL_MODE" = "socks5" ]; then
-    # 使用 SOCKS5 专用模板
+    # SOCKS5 模式：优先使用 autossh-socks5@.service 模板
+    # 如果不存在，则创建包含企业级参数的内联配置
     SERVICE_TEMPLATE="$(dirname "$0")/autossh-socks5@.service"
     if [ -f "$SERVICE_TEMPLATE" ]; then
         cp "$SERVICE_TEMPLATE" "$SERVICE_DEST"
         print_success "SOCKS5 服务模板已复制"
     else
-        print_warning "未找到 SOCKS5 服务模板，创建默认配置..."
+        print_warning "未找到 SOCKS5 服务模板，创建企业级默认配置..."
         cat > "$SERVICE_DEST" << 'EOF'
 [Unit]
 Description=AutoSSH SOCKS5 Tunnel Service - %i
@@ -227,11 +229,16 @@ EnvironmentFile=%h/.autossh/%i.env
 
 ExecStartPre=/bin/bash -c 'PORT=${LOCAL_PORT}; if command -v ss &> /dev/null; then if ss -tlnp 2>/dev/null | grep -q ":$PORT "; then PID=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -oP "pid=\\K[0-9]+" | head -1); if [ -n "$PID" ]; then PROCESS=$(ps -p $PID -o comm --no-headers 2>/dev/null || echo "unknown"); if [[ "$PROCESS" == *"autossh"* ]] || [[ "$PROCESS" == *"ssh"* ]]; then kill -15 $PID 2>/dev/null || true; sleep 2; kill -9 $PID 2>/dev/null || true; fi; fi; fi; fi; exit 0'
 
-ExecStart=/usr/bin/autossh -M 0 -N -T -C \
+# 启动命令（企业级超稳定配置）
+# 总超时 = 15 秒 × 120 次 = 1800 秒 = 30 分钟
+ExecStart=/usr/bin/autossh -M 0 -N -T \
     -i ${SSH_KEY} \
-    -o ServerAliveInterval=60 \
-    -o ServerAliveCountMax=3 \
-    -D ${LOCAL_PORT} \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=120 \
+    -o TCPKeepAlive=yes \
+    -o ConnectTimeout=30 \
+    -o ConnectionAttempts=10 \
+    -D 0.0.0.0:${LOCAL_PORT} \
     ${USER}@${HOST} -p ${PORT}
 
 Restart=always
@@ -244,10 +251,10 @@ SyslogIdentifier=autossh-%i
 [Install]
 WantedBy=default.target
 EOF
-        print_success "默认 SOCKS5 服务配置已创建"
+        print_success "企业级 SOCKS5 服务配置已创建"
     fi
 else
-    # 使用端口转发模板
+    # 端口转发模式：优先使用 autossh@.service 模板
     SERVICE_TEMPLATE="$(dirname "$0")/autossh@.service"
     if [ -f "$SERVICE_TEMPLATE" ]; then
         cp "$SERVICE_TEMPLATE" "$SERVICE_DEST"
@@ -267,10 +274,14 @@ EnvironmentFile=%h/.autossh/%i.env
 
 ExecStartPre=/bin/bash -c 'PORT=${LOCAL_PORT}; if command -v ss &> /dev/null; then if ss -tlnp 2>/dev/null | grep -q ":$PORT "; then PID=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -oP "pid=\\K[0-9]+" | head -1); if [ -n "$PID" ]; then PROCESS=$(ps -p $PID -o comm --no-headers 2>/dev/null || echo "unknown"); if [[ "$PROCESS" == *"autossh"* ]] || [[ "$PROCESS" == *"ssh"* ]]; then kill -15 $PID 2>/dev/null || true; sleep 2; kill -9 $PID 2>/dev/null || true; fi; fi; fi; fi; exit 0'
 
-ExecStart=/usr/bin/autossh -M 0 -N -T -C \
+# 启动命令（企业级超稳定配置）
+ExecStart=/usr/bin/autossh -M 0 -N -T \
     -i ${SSH_KEY} \
-    -o ServerAliveInterval=60 \
-    -o ServerAliveCountMax=3 \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=120 \
+    -o TCPKeepAlive=yes \
+    -o ConnectTimeout=30 \
+    -o ConnectionAttempts=10 \
     -L ${LOCAL_PORT}:localhost:${REMOTE_PORT} \
     ${USER}@${HOST} -p ${PORT}
 
